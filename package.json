@@ -1,5 +1,5 @@
 {
-  "name": "plugpffft",
+  "name": "fartport",
   "version": "1.0.0",
   "description": "A macOS and Windows tray app that plays a fart when power is connected.",
   "private": true,
