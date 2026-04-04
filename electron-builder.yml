@@ -1,5 +1,5 @@
-appId: com.plugpffft.app
-productName: PlugPffft
+appId: com.fartport.app
+productName: FartPort
 directories:
   output: release
 files:
