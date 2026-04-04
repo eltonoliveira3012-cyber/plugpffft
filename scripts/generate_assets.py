@@ -370,10 +370,14 @@ def save_icon_assets() -> None:
         if stale_file.exists():
             stale_file.unlink()
 
+    # Brand icon PNGs are pre-generated (💨 emoji) and committed to the repo.
+    # Only regenerate if a PNG is missing — never overwrite committed icons.
     brand_sizes = [16, 32, 48, 64, 128, 256, 512, 1024]
     for size in brand_sizes:
-        rgba_bytes = render_brand_icon(size)
-        write_png(APP_ASSETS_DIR / f"icon-{size}.png", size, size, rgba_bytes)
+        png_path = APP_ASSETS_DIR / f"icon-{size}.png"
+        if not png_path.exists():
+            rgba_bytes = render_brand_icon(size)
+            write_png(png_path, size, size, rgba_bytes)
 
     shutil.copy2(APP_ASSETS_DIR / "icon-1024.png", APP_ASSETS_DIR / "brand-mark.png")
     shutil.copy2(APP_ASSETS_DIR / "icon-1024.png", WEBSITE_DIR / "brand-mark.png")
