@@ -491,7 +491,7 @@ def main() -> None:
     save_icon_assets()
     print("Generating audio assets...", flush=True)
     generate_fart_sounds()
-    print("Generated PlugPffft icon and audio assets.", flush=True)
+    print("Generated FartPort icon and audio assets.", flush=True)
 
 
 if __name__ == "__main__":
