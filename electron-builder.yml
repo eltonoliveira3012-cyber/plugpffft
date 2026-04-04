@@ -1,0 +1,33 @@
+appId: com.plugpffft.app
+productName: PlugPffft
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+extraResources:
+  - from: assets/audio
+    to: assets/audio
+  - from: assets/app
+    to: assets/app
+asar: true
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+mac:
+  category: public.app-category.entertainment
+  icon: assets/app/icon.icns
+  target:
+    - target: dmg
+    - target: zip
+  extendInfo:
+    LSUIElement: true
+    NSPrincipalClass: NSApplication
+  hardenedRuntime: false
+win:
+  icon: assets/app/icon.ico
+  target:
+    - target: nsis
+    - target: portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

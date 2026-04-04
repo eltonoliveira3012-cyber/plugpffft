@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlugPffft</title>
+    <meta
+      name="description"
+      content="PlugPffft lives in your menu bar or system tray and fires off a perfectly immature charging sound the instant you connect power."
+    />
+    <link rel="icon" href="./favicon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <span class="eyebrow">Tray app for macOS and Windows</span>
+          <h1>Every charger deserves a dramatic entrance.</h1>
+          <p class="lede">
+            PlugPffft sits in your top bar on macOS and your system tray on Windows. It now plays one handcrafted fart
+            when power connects and another when power disconnects, with a cleaner icon set built for a real product.
+          </p>
+          <div class="cta-row">
+            <a class="download-card" data-platform="macArm64" href="#" aria-disabled="true">
+              <span class="download-label">macOS for Apple Silicon</span>
+              <span class="download-meta">Waiting for installer</span>
+            </a>
+            <a class="download-card" data-platform="macX64" href="#" aria-disabled="true">
+              <span class="download-label">macOS for Intel</span>
+              <span class="download-meta">Waiting for installer</span>
+            </a>
+            <a class="download-card" data-platform="windows" href="#" aria-disabled="true">
+              <span class="download-label">Download for Windows</span>
+              <span class="download-meta">Waiting for installer</span>
+            </a>
+          </div>
+          <p class="status-line" id="release-status">Upload your latest installers into <code>website/downloads</code>.</p>
+        </div>
+        <div class="hero-visual">
+          <div class="badge-stage">
+            <img class="brand-mark" src="./brand-mark.png" alt="PlugPffft icon" />
+            <div class="tray-preview">
+              <span class="tray-pill">Top bar</span>
+              <div class="menu-strip">
+                <div class="menu-icon"></div>
+                <div class="menu-copy">
+                  <strong>PlugPffft</strong>
+                  <span>Ready for the next cable.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content-grid">
+        <section class="panel reveal">
+          <h2>What ships</h2>
+          <ul class="feature-list">
+            <li>Instant tray icon with no full app window.</li>
+            <li>Real charger connect detection through Electron power events.</li>
+            <li>Custom fart icon set plus separate plug-in and unplug fart sounds.</li>
+            <li>Installer targets for DMG, ZIP, NSIS, and portable Windows builds.</li>
+          </ul>
+        </section>
+
+        <section class="panel reveal delay-1">
+          <h2>Install flow</h2>
+          <ol class="install-list">
+            <li>Download the installer for your operating system.</li>
+            <li>Move the app into Applications on macOS, or run the Windows installer.</li>
+            <li>Launch PlugPffft once and let it start at login from the tray menu.</li>
+          </ol>
+        </section>
+
+        <section class="panel reveal delay-2">
+          <h2>Ready to sell</h2>
+          <p>
+            The app is structured for signed installers and direct download hosting. Replace the placeholder download
+            files with your signed builds, then host this folder on any static host or file-backed storefront.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

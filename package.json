@@ -1,0 +1,29 @@
+{
+  "name": "plugpffft",
+  "version": "1.0.0",
+  "description": "A macOS and Windows tray app that plays a fart when power is connected.",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Your Studio Name",
+  "main": "dist/main.js",
+  "scripts": {
+    "assets": "python3 scripts/generate_assets.py",
+    "build:ts": "node scripts/transpile.mjs",
+    "copy:static": "node scripts/copy-static.mjs",
+    "build": "npm run assets && npm run build:ts && npm run copy:static",
+    "dev": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run dist:mac:arm64",
+    "dist:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64",
+    "dist:mac:x64": "npm run build && electron-builder --mac dmg zip --x64",
+    "dist:win": "npm run build && electron-builder --win nsis portable",
+    "site:bundle": "node scripts/prepare-website-downloads.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.6.3"
+  }
+}
