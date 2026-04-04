@@ -1,6 +1,6 @@
 {
   "name": "fartport",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A macOS and Windows tray app that plays a fart when power is connected.",
   "private": true,
   "license": "UNLICENSED",
