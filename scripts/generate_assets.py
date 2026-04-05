@@ -8,12 +8,42 @@ import wave
 import zlib
 from pathlib import Path
 
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+except ModuleNotFoundError:
+    Image = None
+    ImageDraw = None
+    ImageFilter = None
+    ImageFont = None
+
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_ASSETS_DIR = ROOT / "assets" / "app"
 AUDIO_ASSETS_DIR = ROOT / "assets" / "audio"
 WEBSITE_DIR = ROOT / "website"
+BUILD_DIR = ROOT / "build"
 ICONSET_DIR = APP_ASSETS_DIR / "plugpffft.iconset"
+
+EMOJI_FONT_PATHS = [
+    "/System/Library/Fonts/Apple Color Emoji.ttc",
+    "/System/Library/Fonts/AppleColorEmoji.ttf",
+    "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+]
+
+DISPLAY_FONT_PATHS = [
+    "/System/Library/Fonts/Avenir Next Condensed.ttc",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/System/Library/Fonts/Avenir.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+]
+
+BODY_FONT_PATHS = [
+    "/System/Library/Fonts/Avenir.ttc",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+]
+
+EMOJI_FONT_FALLBACK_SIZES = [160, 96, 64, 52, 48, 40, 32, 26, 20]
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
@@ -201,6 +231,136 @@ def write_png(path: Path, width: int, height: int, rgba_bytes: bytes) -> None:
         file.write(png_chunk(b"IEND", b""))
 
 
+def pillow_ready() -> bool:
+    return all(module is not None for module in (Image, ImageDraw, ImageFilter, ImageFont))
+
+
+def ensure_existing_assets(paths: list[Path], description: str) -> None:
+    missing = [path.name for path in paths if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"Missing {description} assets ({', '.join(missing)}) and Pillow/font rendering is unavailable to regenerate them."
+        )
+
+
+def find_font(paths: list[str]) -> str:
+    for raw_path in paths:
+        if Path(raw_path).exists():
+            return raw_path
+    raise FileNotFoundError(f"No usable font found in: {paths}")
+
+
+def load_emoji_font(preferred_size: int):
+    if ImageFont is None:
+        raise RuntimeError("Pillow is required for tray icon generation")
+
+    font_path = find_font(EMOJI_FONT_PATHS)
+    candidate_sizes = [preferred_size, *sorted(EMOJI_FONT_FALLBACK_SIZES, key=lambda size: abs(size - preferred_size))]
+    attempted: set[int] = set()
+
+    for size in candidate_sizes:
+        if size in attempted:
+            continue
+        attempted.add(size)
+        try:
+            return ImageFont.truetype(font_path, size)
+        except OSError:
+            continue
+
+    raise OSError(f"Unable to load emoji font at a usable size from {font_path}")
+
+
+def get_resample_filter():
+    if Image is None:
+        raise RuntimeError("Pillow is required for resampling")
+    if hasattr(Image, "Resampling"):
+        return Image.Resampling.LANCZOS
+    return Image.LANCZOS
+
+
+def create_linear_gradient(
+    size: tuple[int, int],
+    start_color: tuple[int, int, int],
+    end_color: tuple[int, int, int],
+) -> "Image.Image":
+    if Image is None:
+        raise RuntimeError("Pillow is required for installer art generation")
+
+    width, height = size
+    image = Image.new("RGBA", size, (*start_color, 255))
+    pixels = image.load()
+
+    for y in range(height):
+        y_mix = y / max(height - 1, 1)
+        for x in range(width):
+            x_mix = x / max(width - 1, 1)
+            mix = clamp((x_mix * 0.6) + (y_mix * 0.4), 0.0, 1.0)
+            r = int(lerp(start_color[0], end_color[0], mix))
+            g = int(lerp(start_color[1], end_color[1], mix))
+            b = int(lerp(start_color[2], end_color[2], mix))
+            pixels[x, y] = (r, g, b, 255)
+
+    return image
+
+
+def add_glow(
+    image: "Image.Image",
+    box: tuple[int, int, int, int],
+    color: tuple[int, int, int, int],
+    blur_radius: int,
+) -> None:
+    if Image is None or ImageDraw is None or ImageFilter is None:
+        raise RuntimeError("Pillow is required for installer art generation")
+
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.ellipse(box, fill=color)
+    image.alpha_composite(overlay.filter(ImageFilter.GaussianBlur(radius=blur_radius)))
+
+
+def wrap_text(draw: "ImageDraw.ImageDraw", text: str, font: "ImageFont.FreeTypeFont", max_width: int) -> list[str]:
+    words = text.split()
+    lines: list[str] = []
+    current_line = ""
+
+    for word in words:
+        candidate = word if not current_line else f"{current_line} {word}"
+        if draw.textlength(candidate, font=font) <= max_width:
+            current_line = candidate
+            continue
+
+        if current_line:
+            lines.append(current_line)
+        current_line = word
+
+    if current_line:
+        lines.append(current_line)
+
+    return lines
+
+
+def draw_text_block(
+    draw: "ImageDraw.ImageDraw",
+    text: str,
+    *,
+    x: int,
+    y: int,
+    font: "ImageFont.FreeTypeFont",
+    fill: tuple[int, int, int, int],
+    max_width: int,
+    line_gap: int,
+) -> int:
+    lines = wrap_text(draw, text, font, max_width)
+    cursor_y = y
+
+    for line in lines:
+        draw.text((x, cursor_y), line, font=font, fill=fill)
+        bbox = draw.textbbox((x, cursor_y), line, font=font)
+        cursor_y = bbox[3] + line_gap
+
+    return cursor_y
+
+
 def draw_peach(
     canvas: Canvas,
     center_x: float,
@@ -319,13 +479,44 @@ def render_brand_icon(size: int) -> bytes:
     return bytes(canvas.data)
 
 
-def render_tray_icon(size: int, color: tuple[int, int, int, int]) -> bytes:
-    canvas = Canvas(size, size)
-    draw_peach(canvas, 0.30, 0.55, 0.72, color, color, color)
-    # Wind lines
-    draw_wind_lines(canvas, 0.52, 0.52, color, 0.070, num_lines=3, spread=0.14, length=0.24, gap=0.06)
+def render_emoji_glyph(size: int) -> "Image.Image":
+    if Image is None or ImageDraw is None or ImageFont is None:
+        raise RuntimeError("Pillow is required for tray icon generation")
 
-    return bytes(canvas.data)
+    resample_filter = get_resample_filter()
+    scale = 6
+    canvas_size = size * scale
+    image = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    font = load_emoji_font(int(canvas_size * 0.74))
+    bbox = draw.textbbox((0, 0), "💨", font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    x = ((canvas_size - text_width) // 2) - bbox[0]
+    y = ((canvas_size - text_height) // 2) - bbox[1]
+    draw.text((x, y), "💨", font=font, embedded_color=True)
+
+    return image.resize((size, size), resample_filter)
+
+
+def render_tray_template_icon(size: int) -> "Image.Image":
+    if Image is None:
+        raise RuntimeError("Pillow is required for tray icon generation")
+
+    emoji = render_emoji_glyph(size)
+    alpha = emoji.getchannel("A")
+    boosted_alpha = alpha.point(lambda value: min(255, int(value * 1.35)))
+    template = Image.new("RGBA", emoji.size, (0, 0, 0, 0))
+    template.paste((0, 0, 0, 255), (0, 0), boosted_alpha)
+    return template
+
+
+def render_windows_tray_icon(size: int) -> "Image.Image":
+    if Image is None:
+        raise RuntimeError("Pillow is required for tray icon generation")
+
+    return render_emoji_glyph(size)
 
 
 def build_ico(png_paths: list[Path], target_path: Path) -> None:
@@ -416,9 +607,184 @@ def save_icon_assets() -> None:
         APP_ASSETS_DIR / "icon.icns",
     )
 
-    write_png(APP_ASSETS_DIR / "trayTemplate.png", 18, 18, render_tray_icon(18, (0, 0, 0, 255)))
-    write_png(APP_ASSETS_DIR / "trayTemplate@2x.png", 36, 36, render_tray_icon(36, (0, 0, 0, 255)))
-    write_png(APP_ASSETS_DIR / "tray.png", 32, 32, render_tray_icon(32, (96, 36, 18, 255)))
+    save_tray_assets()
+
+
+def save_tray_assets() -> None:
+    tray_paths = [
+        APP_ASSETS_DIR / "trayTemplate.png",
+        APP_ASSETS_DIR / "trayTemplate@2x.png",
+        APP_ASSETS_DIR / "tray.png",
+    ]
+
+    if not pillow_ready():
+        ensure_existing_assets(tray_paths, "tray")
+        return
+
+    try:
+        render_tray_template_icon(18).save(tray_paths[0])
+        render_tray_template_icon(36).save(tray_paths[1])
+        render_windows_tray_icon(32).save(tray_paths[2])
+    except FileNotFoundError:
+        ensure_existing_assets(tray_paths, "tray")
+
+
+def paste_brand_mark(image: "Image.Image", *, x: int, y: int, max_width: int, max_height: int) -> None:
+    if Image is None:
+        raise RuntimeError("Pillow is required for installer art generation")
+
+    resample_filter = get_resample_filter()
+    brand_mark = Image.open(APP_ASSETS_DIR / "brand-mark.png").convert("RGBA")
+    scale = min(max_width / brand_mark.width, max_height / brand_mark.height)
+    target_size = (max(1, int(brand_mark.width * scale)), max(1, int(brand_mark.height * scale)))
+    resized = brand_mark.resize(target_size, resample_filter)
+    image.alpha_composite(resized, (x, y))
+
+
+def render_dmg_background() -> "Image.Image":
+    if not pillow_ready():
+        raise RuntimeError("Pillow is required for DMG background generation")
+
+    image = create_linear_gradient((720, 460), (12, 15, 24), (31, 37, 54))
+    draw = ImageDraw.Draw(image)
+
+    add_glow(image, (-40, -120, 280, 180), (255, 201, 49, 150), 60)
+    add_glow(image, (500, 230, 760, 520), (97, 132, 255, 85), 80)
+
+    headline_font = ImageFont.truetype(find_font(DISPLAY_FONT_PATHS), 40)
+    subhead_font = ImageFont.truetype(find_font(BODY_FONT_PATHS), 18)
+    note_font = ImageFont.truetype(find_font(BODY_FONT_PATHS), 15)
+
+    paste_brand_mark(image, x=42, y=38, max_width=92, max_height=92)
+
+    draw_text_block(
+        draw,
+        "Drag FartPort into Applications",
+        x=156,
+        y=54,
+        font=headline_font,
+        fill=(245, 247, 250, 255),
+        max_width=470,
+        line_gap=8,
+    )
+    next_y = draw_text_block(
+        draw,
+        "Then eject the disk image. If macOS gets grumpy on first launch, the download page has the quick fix.",
+        x=156,
+        y=150,
+        font=subhead_font,
+        fill=(198, 206, 218, 255),
+        max_width=485,
+        line_gap=7,
+    )
+
+    badge_top = next_y + 22
+    draw.rounded_rectangle((44, badge_top, 278, badge_top + 38), radius=18, fill=(255, 204, 51, 34), outline=(255, 211, 92, 96))
+    draw.text((64, badge_top + 10), "Tiny app. Big pfft.", font=note_font, fill=(255, 231, 154, 255))
+
+    for offset in range(3):
+        top = 286 + (offset * 20)
+        draw.line((138, top, 530, top - 6), fill=(255, 215, 105, 70), width=3)
+
+    return image
+
+
+def render_installer_sidebar(title: str, body: str, footer: str) -> "Image.Image":
+    if not pillow_ready():
+        raise RuntimeError("Pillow is required for NSIS art generation")
+
+    image = create_linear_gradient((164, 314), (11, 13, 20), (27, 31, 44))
+    draw = ImageDraw.Draw(image)
+
+    add_glow(image, (-30, -40, 130, 120), (255, 204, 51, 120), 36)
+    add_glow(image, (60, 160, 210, 340), (80, 108, 220, 80), 48)
+
+    title_font = ImageFont.truetype(find_font(DISPLAY_FONT_PATHS), 20)
+    body_font = ImageFont.truetype(find_font(BODY_FONT_PATHS), 13)
+    footer_font = ImageFont.truetype(find_font(BODY_FONT_PATHS), 10)
+
+    paste_brand_mark(image, x=22, y=22, max_width=74, max_height=74)
+    draw_text_block(
+        draw,
+        title,
+        x=22,
+        y=124,
+        font=title_font,
+        fill=(248, 249, 251, 255),
+        max_width=118,
+        line_gap=4,
+    )
+    draw_text_block(
+        draw,
+        body,
+        x=22,
+        y=176,
+        font=body_font,
+        fill=(206, 212, 224, 255),
+        max_width=120,
+        line_gap=5,
+    )
+
+    draw.rounded_rectangle((18, 248, 146, 304), radius=14, fill=(255, 203, 42, 26), outline=(255, 211, 92, 92))
+    draw_text_block(
+        draw,
+        footer,
+        x=28,
+        y=258,
+        font=footer_font,
+        fill=(255, 236, 180, 255),
+        max_width=94,
+        line_gap=3,
+    )
+
+    return image
+
+
+def render_installer_header() -> "Image.Image":
+    if not pillow_ready():
+        raise RuntimeError("Pillow is required for NSIS art generation")
+
+    image = create_linear_gradient((150, 57), (12, 15, 24), (32, 35, 46))
+    draw = ImageDraw.Draw(image)
+
+    add_glow(image, (-12, -18, 74, 74), (255, 204, 51, 96), 18)
+    paste_brand_mark(image, x=10, y=10, max_width=36, max_height=36)
+
+    title_font = ImageFont.truetype(find_font(DISPLAY_FONT_PATHS), 18)
+    subtitle_font = ImageFont.truetype(find_font(BODY_FONT_PATHS), 11)
+    draw.text((56, 10), "FartPort", font=title_font, fill=(247, 248, 250, 255))
+    draw.text((56, 31), "Tiny utility. Big pfft.", font=subtitle_font, fill=(208, 214, 223, 255))
+
+    return image
+
+
+def save_installer_art() -> None:
+    required_paths = [
+        BUILD_DIR / "dmg-background.png",
+        BUILD_DIR / "installerSidebar.bmp",
+        BUILD_DIR / "uninstallerSidebar.bmp",
+        BUILD_DIR / "installerHeader.bmp",
+    ]
+
+    if not pillow_ready():
+        ensure_existing_assets(required_paths, "installer")
+        return
+
+    try:
+        render_dmg_background().save(required_paths[0])
+        render_installer_sidebar(
+            "Install FartPort",
+            "Charger drama in. Punchline out.",
+            "SmartScreen? More info, then Run anyway.",
+        ).convert("RGB").save(required_paths[1])
+        render_installer_sidebar(
+            "Pulling the plug?",
+            "Removing FartPort brings peace back to your power menu.",
+            "You can always reinstall when the room needs more nonsense.",
+        ).convert("RGB").save(required_paths[2])
+        render_installer_header().convert("RGB").save(required_paths[3])
+    except FileNotFoundError:
+        ensure_existing_assets(required_paths, "installer")
 
 
 def synthesize_fart(
@@ -485,7 +851,7 @@ def generate_fart_sounds() -> None:
 
 
 def ensure_dirs() -> None:
-    for directory in (APP_ASSETS_DIR, AUDIO_ASSETS_DIR, WEBSITE_DIR):
+    for directory in (APP_ASSETS_DIR, AUDIO_ASSETS_DIR, WEBSITE_DIR, BUILD_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
 
@@ -493,6 +859,8 @@ def main() -> None:
     ensure_dirs()
     print("Generating icon assets...", flush=True)
     save_icon_assets()
+    print("Generating installer artwork...", flush=True)
+    save_installer_art()
     print("Generating audio assets...", flush=True)
     generate_fart_sounds()
     print("Generated FartPort icon and audio assets.", flush=True)
