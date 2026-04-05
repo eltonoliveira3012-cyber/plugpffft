@@ -68,8 +68,17 @@ jobs:
         with:
           path: artifacts
 
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || inputs.tag }}
+          tag_name: ${{ steps.release_tag.outputs.tag }}
           files: artifacts/**/*
